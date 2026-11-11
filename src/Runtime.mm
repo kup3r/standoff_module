@@ -212,6 +212,36 @@ int Runtime::diagnosticID(void* obj){
     if(diagnosticHandles.size()>=10000)return 0;
     diagnosticHandles.push_back(gchandle_new(obj,false));return (int)diagnosticHandles.size();
 }
+void* Runtime::field(void* obj,const char* name){
+    if(!obj)return nullptr;
+    for(void* c=object_get_class(obj);c;c=class_get_parent(c)){
+        void* iterator=nullptr;
+        while(void* f=class_get_fields(c,&iterator))
+            if(!(field_get_flags(f)&0x10)&&!std::strcmp(field_get_name(f),name))return field_get_value_object(f,obj);
+    }
+    return nullptr;
+}
+void* Runtime::existingService(const char* ns,const char* name){
+    // Inspect already-created DI singletons. Never resolve a service or invoke Lazy.Value.
+    void* scopes=find("VContainer.Unity","LifetimeScope");if(!scopes)return nullptr;
+    void* type=type_get_object(class_get_type(scopes));void* args[]={type};
+    void* all=call(find("UnityEngine","Resources"),"FindObjectsOfTypeAll",nullptr,{"System.Type"},args);if(!all)return nullptr;
+    Handle keep=gchandle_new(all,false);void* found=nullptr;
+    for(size_t i=0;i<std::min<size_t>(length(all),2048)&&!found;i++){
+        void* resolver=field(element(all,i),"<Container>k__BackingField");
+        void* buckets=field(field(field(resolver,"sharedInstances"),"_tables"),"_buckets");
+        if(!buckets||class_get_rank(object_get_class(buckets))!=1)continue;
+        for(size_t j=0;j<std::min<size_t>(length(buckets),16384)&&!found;j++){
+            void* node=element(buckets,j);
+            for(int chain=0;node&&chain<1024;chain++,node=field(node,"_next")){
+                void* value=field(field(node,"_value"),"_value");if(!value)continue;
+                void* klass=object_get_class(value);
+                if(!std::strcmp(class_get_namespace(klass),ns)&&!std::strcmp(class_get_name(klass),name)){found=value;break;}
+            }
+        }
+    }
+    gchandle_free(keep);return found;
+}
 std::string Runtime::diagnosticRoots(){
     if(!attach())return json(@{@"error":text(status.c_str())});
     for(auto h:diagnosticHandles)gchandle_free(h);diagnosticHandles.clear();
@@ -227,6 +257,10 @@ std::string Runtime::diagnosticRoots(){
             void* obj=element(array,i);if(!alive(obj))continue;
             [nodes addObject:@{@"id":@(diagnosticID(obj)),@"class":className(object_get_class(obj))}];
         }gchandle_free(root);
+    }
+    if(void* dlc=existingService("Axlebolt.Standoff2.DLCSupport","DLCService")){
+        void* entries=field(field(dlc,"_actualContentEntries"),"_items");
+        if(entries)[nodes addObject:@{@"id":@(diagnosticID(entries)),@"class":className(object_get_class(entries)),@"length":@(length(entries)),@"role":@"publicCosmeticCatalogue"}];
     }
     return json(@{@"roots":nodes,@"note":@"Read-only object graph; managed strings are omitted"});
 }

@@ -36,6 +36,8 @@ private:
     std::vector<Saved> saved;
     std::vector<Handle> diagnosticHandles;
     int diagnosticID(void* object);
+    void* field(void* object,const char* name);
+    void* existingService(const char* ns,const char* name);
     void* find(const char* ns,const char* name);
     const void* method(void* klass,const char* name,const std::vector<std::string>& parameters);
     void* call(void* klass,const char* name,void* instance,const std::vector<std::string>& types={},void** args=nullptr);
