@@ -37,6 +37,8 @@ static void* (*array_new)(void*,uintptr_t);
 static void (*gc_wbarrier_set_field)(void*,void**,void*);
 static void* (*object_new)(void*);
 static void* (*string_new)(const char*);
+static int32_t (*string_length)(void*);
+static const uint16_t* (*string_chars)(void*);
 static const char* (*class_get_name)(void*);
 static const char* (*class_get_namespace)(void*);
 static bool (*class_is_valuetype)(void*);
@@ -70,6 +72,7 @@ bool Runtime::attach() {
     BIND(gchandle_new,"gchandle_new");BIND(gchandle_get_target,"gchandle_get_target");BIND(gchandle_free,"gchandle_free");
     BIND(array_new,"array_new");BIND(gc_wbarrier_set_field,"gc_wbarrier_set_field");
     BIND(object_new,"object_new");BIND(string_new,"string_new");
+    BIND(string_length,"string_length");BIND(string_chars,"string_chars");
     BIND(class_get_name,"class_get_name");BIND(class_get_namespace,"class_get_namespace");
     BIND(class_is_valuetype,"class_is_valuetype");BIND(class_get_rank,"class_get_rank");
     BIND(class_get_fields,"class_get_fields");BIND(field_get_name,"field_get_name");
@@ -266,5 +269,42 @@ std::string Runtime::diagnosticNode(int id){
     if([cn isEqualToString:@"System.Boolean"]){bool n=false;value(obj,n);result[@"value"]=@(n);}
     if([cn isEqualToString:@"System.UInt16"]){uint16_t n=0;value(obj,n);result[@"value"]=@(n);}
     return json(result);
+}
+std::string Runtime::diagnosticCatalogue(int arrayId,int start,int count){
+    if(arrayId<1||(size_t)arrayId>diagnosticHandles.size())return json(@{@"error":@"Invalid array ID"});
+    void* array=gchandle_get_target(diagnosticHandles[arrayId-1]);
+    if(!array||class_get_rank(object_get_class(array))!=1||![className(object_get_class(array)) isEqualToString:@"Axlebolt.Standoff2.DLCSupport.Content.IContentEntry[]"])
+        return json(@{@"error":@"Expected the public IContentEntry array"});
+    const auto publicString=[](void* s)->NSString*{
+        if(!s||![className(object_get_class(s)) isEqualToString:@"System.String"])return @"";
+        int32_t n=string_length(s);if(n<0||n>2048)return @"";
+        return [[NSString alloc] initWithCharacters:reinterpret_cast<const unichar*>(string_chars(s)) length:n]?:@"";
+    };
+    NSMutableArray* entries=[NSMutableArray array];size_t total=length(array);
+    size_t begin=(size_t)std::max(0,start),end=std::min(total,begin+(size_t)std::clamp(count,1,256));
+    for(size_t i=begin;i<end;i++){
+        void* obj=element(array,i);if(!obj)continue;NSString* cn=className(object_get_class(obj));
+        NSString* kind=nil;
+        if([cn isEqualToString:@"Axlebolt.Standoff.Main.Inventory.SkinDefinition"]||[cn isEqualToString:@"Axlebolt.Standoff.Main.Inventory.StatTrackSkinDefinition"])kind=@"skin";
+        else if([cn isEqualToString:@"Axlebolt.Standoff.Main.Inventory.Gloves.GlovesDefinition"])kind=@"gloves";
+        else if([cn isEqualToString:@"Axlebolt.Standoff.Main.Inventory.Stickers.StickerDefinition"])kind=@"sticker";
+        if(!kind)continue;
+        int32_t cosmeticId=0;uint8_t weapon=0;bool hasId=false;
+        for(void* c=object_get_class(obj);c;c=class_get_parent(c)){
+            void* iterator=nullptr;
+            while(void* field=class_get_fields(c,&iterator)){
+                if(field_get_flags(field)&0x10)continue;
+                const char* name=field_get_name(field);
+                if(!std::strcmp(name,"_id"))hasId=value(field_get_value_object(field,obj),cosmeticId);
+                else if(!std::strcmp(name,"_weaponId"))value(field_get_value_object(field,obj),weapon);
+            }
+        }
+        if(!hasId)continue;
+        NSString* name=publicString(objectCall(obj,"get_name"));
+        NSMutableDictionary* entry=[@{@"index":@(i),@"id":@(cosmeticId),@"kind":kind,@"name":name,@"weapon":@(weapon),@"statTrack":@([cn hasSuffix:@".StatTrackSkinDefinition"])} mutableCopy];
+        if([kind isEqualToString:@"skin"]&&method(object_get_class(obj),"get_TemplateContentId",{}))entry[@"template"]=publicString(objectCall(obj,"get_TemplateContentId"));
+        [entries addObject:entry];
+    }
+    return json(@{@"entries":entries,@"start":@(begin),@"next":@(end),@"total":@(total)});
 }
 }

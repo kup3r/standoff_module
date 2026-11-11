@@ -29,6 +29,7 @@ static void bridgePoll(){
     std::string report;
     if([request[@"action"] isEqual:@"roots"])report=runtime.diagnosticRoots();
     else if([request[@"action"] isEqual:@"node"])report=runtime.diagnosticNode([request[@"id"] intValue]);
+    else if([request[@"action"] isEqual:@"catalogue"])report=runtime.diagnosticCatalogue([request[@"id"] intValue],[request[@"start"] intValue],[request[@"count"] intValue]);
     else report="{\"error\":\"Unsupported read-only request\"}";
     id result=[NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:report.data() length:report.size()] options:0 error:nil]?:@{};
     NSDictionary* response=@{@"sequence":request[@"sequence"]?:@0,@"result":result};

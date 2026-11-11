@@ -19,6 +19,7 @@ public:
     void restore();
     std::string diagnosticRoots();
     std::string diagnosticNode(int id);
+    std::string diagnosticCatalogue(int arrayId,int start,int count);
     std::string status="Waiting for Unity";
 private:
     void* library=nullptr;
