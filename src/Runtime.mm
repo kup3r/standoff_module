@@ -105,7 +105,7 @@ size_t Runtime::length(void* a){return a?array_length(a):0;}
 void* Runtime::element(void* a,size_t i){return i<length(a)?reinterpret_cast<void**>(static_cast<char*>(a)+array_object_header_size())[i]:nullptr;}
 
 void Runtime::sample(float width,float height,std::vector<Target>& result){
-    result.clear();if(!attach())return;
+    result.clear();if(!visualsAllowed){status="Visual effects suspended";return;}if(!attach())return;
     void* cam=call(cameraClass,"get_main",nullptr);if(!alive(cam)){restore();status="No main camera";return;}
     int pw=0,ph=0;value(objectCall(cam,"get_pixelWidth"),pw);value(objectCall(cam,"get_pixelHeight"),ph);
     if(pw<=0||ph<=0)return;
@@ -139,6 +139,11 @@ void Runtime::sample(float width,float height,std::vector<Target>& result){
     status=result.empty()?"No PlayerBindings candidates in view":"Candidate overlay; team / health not mapped";
 }
 void Runtime::setTint(bool enabled){tint=enabled;if(!tint)restore();lastTint=0;}
+void Runtime::setVisualsAllowed(bool allowed){
+    if(allowed==visualsAllowed)return;
+    if(!allowed)restore();
+    visualsAllowed=allowed;lastTint=0;
+}
 void Runtime::restore(){
     for(auto& s:saved){void* r=gchandle_get_target(s.renderer);void* a=gchandle_get_target(s.materials);
         if(alive(r)&&a){void* args[]={a};objectCall(r,"set_sharedMaterials",{"UnityEngine.Material[]"},args);}
@@ -147,6 +152,7 @@ void Runtime::restore(){
     }saved.clear();
 }
 void Runtime::applyTint(void* binding){
+    if(!visualsAllowed)return;
     void* rt=type_get_object(class_get_type(rendererClass));void* args[]={rt};
     void* renderers=objectCall(binding,"GetComponentsInChildren",{"System.Type"},args);
     if(!renderers)return;

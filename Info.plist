@@ -5,8 +5,8 @@
 <key>CFBundleName</key><string>GlowESP</string>
 <key>CFBundleExecutable</key><string>GlowESP</string>
 <key>CFBundlePackageType</key><string>FMWK</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
+<key>CFBundleVersion</key><string>2</string>
+<key>CFBundleShortVersionString</key><string>0.2.0</string>
 <key>MinimumOSVersion</key><string>15.0</string>
 <key>CFBundleSupportedPlatforms</key><array><string>iPhoneOS</string></array>
 </dict></plist>

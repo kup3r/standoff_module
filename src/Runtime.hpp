@@ -13,6 +13,7 @@ public:
     bool attach();
     void sample(float width,float height,std::vector<Target>& result);
     void setTint(bool enabled);
+    void setVisualsAllowed(bool allowed);
     void restore();
     std::string status="Waiting for Unity";
 private:
@@ -24,6 +25,7 @@ private:
     void* rendererClass=nullptr;
     void* materialClass=nullptr;
     bool tint=false;
+    bool visualsAllowed=false;
     double lastTint=0;
     struct Saved { uint32_t renderer,materials; std::vector<uint32_t> clones; };
     std::vector<Saved> saved;
