@@ -21,7 +21,8 @@ async def query(afc,request):
   await asyncio.sleep(.25)
   path=directory+'/response.json'
   if not await afc.exists(path):continue
-  response=json.loads(await afc.get_file_contents(path))
+  try:response=json.loads(await afc.get_file_contents(path))
+  except (json.JSONDecodeError,UnicodeDecodeError):continue
   if response.get('sequence')==sequence:return response['result']
  raise RuntimeError('No diagnostic reply. Keep the game visible and unlocked.')
 async def main():
