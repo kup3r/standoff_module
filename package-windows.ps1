@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory=$true)][string]$SourceIPA,
     [Parameter(Mandatory=$true)][string]$FrameworkDirectory,
-    [Parameter(Mandatory=$true)][string]$OutputIPA
+    [Parameter(Mandatory=$true)][string]$OutputIPA,
+    [string]$DevelopmentInfoPlist
 )
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -13,6 +14,16 @@ if(Test-Path -LiteralPath $output){throw 'Output already exists; choose a new fi
 if(!(Test-Path -LiteralPath (Join-Path $framework 'GlowESP')) -or !(Test-Path -LiteralPath (Join-Path $framework 'Info.plist'))){throw 'A compiled GlowESP.framework is required; source files alone cannot be packaged'}
 $frameworkBytes=[IO.File]::ReadAllBytes((Join-Path $framework 'GlowESP'))
 if($frameworkBytes.Length -lt 32 -or [BitConverter]::ToUInt32($frameworkBytes,0) -ne 4277009103 -or [BitConverter]::ToUInt32($frameworkBytes,4) -ne 16777228 -or [BitConverter]::ToUInt32($frameworkBytes,12) -ne 6){throw 'Framework executable must be a thin arm64 Mach-O dylib'}
+$developmentInfo=$null
+if($DevelopmentInfoPlist){
+    $developmentInfo=[IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $DevelopmentInfoPlist).Path)
+    $xml=[Xml.XmlDocument]::new();$xml.XmlResolver=$null
+    $xml.LoadXml([Text.Encoding]::UTF8.GetString($developmentInfo))
+    $exe=$xml.SelectSingleNode('/plist/dict/key[text()="CFBundleExecutable"]/following-sibling::*[1]')
+    $sharing=$xml.SelectSingleNode('/plist/dict/key[text()="UIFileSharingEnabled"]/following-sibling::*[1]')
+    $inPlace=$xml.SelectSingleNode('/plist/dict/key[text()="LSSupportsOpeningDocumentsInPlace"]/following-sibling::*[1]')
+    if(!$exe -or $exe.InnerText -ne 'Standoff2' -or !$sharing -or $sharing.Name -ne 'true' -or !$inPlace -or $inPlace.Name -ne 'true'){throw 'Expected a development plist prepared by tools/diagnostic-info.py'}
+}
 
 function Add-GlowLoadCommand([byte[]]$binary){
     if([BitConverter]::ToUInt32($binary,0) -ne 4277009103 -or [BitConverter]::ToUInt32($binary,4) -ne 16777228){throw 'Expected a thin arm64 Mach-O main executable'}
@@ -64,6 +75,7 @@ try{
     if($apps.Count -ne 1){throw 'Expected exactly one Standoff2 executable'}
     $exePath=$apps[0].FullName
     $appRoot=$exePath.Substring(0,$exePath.LastIndexOf('/')+1)
+    if($developmentInfo -and !$zip.GetEntry($appRoot+'Info.plist')){throw 'Missing original application Info.plist'}
     $stream=$apps[0].Open();$memory=[IO.MemoryStream]::new()
     try{$stream.CopyTo($memory);$patched=Add-GlowLoadCommand $memory.ToArray()}finally{$stream.Dispose();$memory.Dispose()}
     if($zip.Entries.FullName -contains ($appRoot+'Frameworks/GlowESP.framework/GlowESP')){throw 'Framework already embedded'}
@@ -72,6 +84,11 @@ try{
 [IO.File]::Copy($source,$output,$false)
 $zip=[IO.Compression.ZipFile]::Open($output,[IO.Compression.ZipArchiveMode]::Update)
 try{
+    if($developmentInfo){
+        $zip.GetEntry($appRoot+'Info.plist').Delete()
+        $info=$zip.CreateEntry($appRoot+'Info.plist',[IO.Compression.CompressionLevel]::Optimal)
+        $s=$info.Open();try{$s.Write($developmentInfo,0,$developmentInfo.Length)}finally{$s.Dispose()}
+    }
     $zip.GetEntry($exePath).Delete()
     $entry=$zip.CreateEntry($exePath,[IO.Compression.CompressionLevel]::Optimal)
     $stream=$entry.Open();try{$stream.Write($patched,0,$patched.Length)}finally{$stream.Dispose()}

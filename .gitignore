@@ -4,6 +4,8 @@ build/
 *.mobileprovision
 *.ips
 .DS_Store
+__pycache__/
+diagnostics/
 analysis/gameplay-types.txt
 analysis/symbols.json
 analysis/analyse.cjs
