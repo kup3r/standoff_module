@@ -2,15 +2,19 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
-mkdir -p build/GlowESP.framework
+BUILD_DIR="${BUILD_DIR:-build}"
+DEV_BRIDGE="${GLOW_DEV_BRIDGE:-0}"
+case "$DEV_BRIDGE" in 0|1) ;; *) echo 'GLOW_DEV_BRIDGE must be 0 or 1'; exit 1;; esac
+mkdir -p "$BUILD_DIR/GlowESP.framework"
 xcrun --sdk iphoneos clang++ -std=c++17 -fobjc-arc -fvisibility=hidden \
+  -DGLOW_DEV_BRIDGE="$DEV_BRIDGE" \
   -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0 \
   -dynamiclib src/Runtime.mm src/Overlay.mm \
   -framework Foundation -framework UIKit -framework QuartzCore -framework CoreGraphics \
   -install_name '@rpath/GlowESP.framework/GlowESP' \
-  -o build/GlowESP.framework/GlowESP
-cp Info.plist build/GlowESP.framework/Info.plist
+  -o "$BUILD_DIR/GlowESP.framework/GlowESP"
+cp Info.plist "$BUILD_DIR/GlowESP.framework/Info.plist"
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
-  codesign --force --sign "$SIGN_IDENTITY" build/GlowESP.framework
+  codesign --force --sign "$SIGN_IDENTITY" "$BUILD_DIR/GlowESP.framework"
 fi
-echo 'Built build/GlowESP.framework. This is not an installable or signed IPA.'
+echo "Built $BUILD_DIR/GlowESP.framework. This is not an installable or signed IPA."

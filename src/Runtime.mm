@@ -1,4 +1,5 @@
 #include "Runtime.hpp"
+#import <Foundation/Foundation.h>
 #include <dlfcn.h>
 #include <cmath>
 #include <cstring>
@@ -36,6 +37,15 @@ static void* (*array_new)(void*,uintptr_t);
 static void (*gc_wbarrier_set_field)(void*,void**,void*);
 static void* (*object_new)(void*);
 static void* (*string_new)(const char*);
+static const char* (*class_get_name)(void*);
+static const char* (*class_get_namespace)(void*);
+static bool (*class_is_valuetype)(void*);
+static uint32_t (*class_get_rank)(void*);
+static void* (*class_get_fields)(void*,void**);
+static const char* (*field_get_name)(void*);
+static uint32_t (*field_get_flags)(void*);
+static const void* (*field_get_type)(void*);
+static void* (*field_get_value_object)(void*,void*);
 
 template<class T> static bool value(void* boxed,T& out) {
     if(!boxed)return false;
@@ -60,6 +70,10 @@ bool Runtime::attach() {
     BIND(gchandle_new,"gchandle_new");BIND(gchandle_get_target,"gchandle_get_target");BIND(gchandle_free,"gchandle_free");
     BIND(array_new,"array_new");BIND(gc_wbarrier_set_field,"gc_wbarrier_set_field");
     BIND(object_new,"object_new");BIND(string_new,"string_new");
+    BIND(class_get_name,"class_get_name");BIND(class_get_namespace,"class_get_namespace");
+    BIND(class_is_valuetype,"class_is_valuetype");BIND(class_get_rank,"class_get_rank");
+    BIND(class_get_fields,"class_get_fields");BIND(field_get_name,"field_get_name");
+    BIND(field_get_flags,"field_get_flags");BIND(field_get_type,"field_get_type");BIND(field_get_value_object,"field_get_value_object");
 #undef BIND
     if(!domain_get()){status="IL2CPP domain not ready";dlclose(h);return false;}
     if(!thread_current())thread_attach(domain_get());
@@ -98,7 +112,8 @@ void* Runtime::call(void* c,const char* name,void* instance,const std::vector<st
     if(exception){status=std::string("Managed exception: ")+name;return nullptr;}return r;
 }
 void* Runtime::objectCall(void* obj,const char* name,const std::vector<std::string>& types,void** args){
-    return obj?call(object_get_class(obj),name,obj,types,args):nullptr;
+    if(!obj)return nullptr;void* c=object_get_class(obj);
+    return call(c,name,class_is_valuetype(c)?object_unbox(obj):obj,types,args);
 }
 bool Runtime::alive(void* obj){if(!obj)return false;void* args[]={obj};bool b=false;return value(call(unityObject,"op_Implicit",nullptr,{"UnityEngine.Object"},args),b)&&b;}
 size_t Runtime::length(void* a){return a?array_length(a):0;}
@@ -180,5 +195,76 @@ void Runtime::applyTint(void* binding){
         else {saved.push_back(s); /* restore path releases partially created materials as well */}
         gchandle_free(copiesRoot);
     }gchandle_free(root);
+}
+
+static NSString* text(const char* s){return s?[NSString stringWithUTF8String:s]:@"";}
+static NSString* className(void* c){return [NSString stringWithFormat:@"%@.%@",text(class_get_namespace(c)),text(class_get_name(c))];}
+static std::string json(id object){
+    NSData* data=[NSJSONSerialization dataWithJSONObject:object options:NSJSONWritingPrettyPrinted error:nil];
+    return data?std::string(static_cast<const char*>(data.bytes),data.length):"{}";
+}
+int Runtime::diagnosticID(void* obj){
+    if(!obj)return 0;
+    for(size_t i=0;i<diagnosticHandles.size();i++)if(gchandle_get_target(diagnosticHandles[i])==obj)return (int)i+1;
+    if(diagnosticHandles.size()>=10000)return 0;
+    diagnosticHandles.push_back(gchandle_new(obj,false));return (int)diagnosticHandles.size();
+}
+std::string Runtime::diagnosticRoots(){
+    if(!attach())return json(@{@"error":text(status.c_str())});
+    for(auto h:diagnosticHandles)gchandle_free(h);diagnosticHandles.clear();
+    NSMutableArray* nodes=[NSMutableArray array];
+    void* resources=find("UnityEngine","Resources");
+    const char* names[][2]={{"VContainer.Unity","LifetimeScope"},{"Axlebolt.Standoff.Gameplay.Player","PlayerBindings"},{"Axlebolt.Standoff.Content.Definitions.Skin","SkinDefinition"}};
+    for(auto& name:names){
+        void* klass=find(name[0],name[1]);if(!klass)continue;
+        void* rt=type_get_object(class_get_type(klass));void* args[]={rt};
+        void* array=call(resources,"FindObjectsOfTypeAll",nullptr,{"System.Type"},args);if(!array)continue;
+        uint32_t root=gchandle_new(array,false);
+        for(size_t i=0;i<std::min<size_t>(length(array),2048);i++){
+            void* obj=element(array,i);if(!alive(obj))continue;
+            [nodes addObject:@{@"id":@(diagnosticID(obj)),@"class":className(object_get_class(obj))}];
+        }gchandle_free(root);
+    }
+    return json(@{@"roots":nodes,@"note":@"Read-only object graph; managed strings are omitted"});
+}
+std::string Runtime::diagnosticNode(int id){
+    if(id<1||(size_t)id>diagnosticHandles.size())return "{\"error\":\"Invalid node ID\"}";
+    void* obj=gchandle_get_target(diagnosticHandles[id-1]);if(!obj)return "{\"error\":\"Object collected\"}";
+    void* klass=object_get_class(obj);
+    if(className(klass)==nil)return "{}";
+    NSString* primitive=className(klass);
+    if([primitive isEqualToString:@"System.Int32"]){int32_t n=0;value(obj,n);return json(@{@"id":@(id),@"class":primitive,@"value":@(n)});}
+    if([primitive isEqualToString:@"System.Boolean"]){bool n=false;value(obj,n);return json(@{@"id":@(id),@"class":primitive,@"value":@(n)});}
+    if([primitive isEqualToString:@"System.UInt16"]){uint16_t n=0;value(obj,n);return json(@{@"id":@(id),@"class":primitive,@"value":@(n)});}
+    if([primitive isEqualToString:@"System.Byte"]){uint8_t n=0;value(obj,n);return json(@{@"id":@(id),@"class":primitive,@"value":@(n)});}
+    NSMutableArray* fields=[NSMutableArray array];
+    for(void* c=klass;c;c=class_get_parent(c)){
+        void* iterator=nullptr;
+        while(void* field=class_get_fields(c,&iterator)){
+            if(field_get_flags(field)&0x10)continue; // no static state or service construction
+            char* tn=type_get_name(field_get_type(field));NSString* type=text(tn);if(tn)ilfree(tn);
+            // Never export account strings, credentials, user names or network data.
+            NSString* name=text(field_get_name(field));
+            if([type isEqualToString:@"System.String"]||[type isEqualToString:@"System.Byte[]"])continue;
+            void* child=field_get_value_object(field,obj);
+            [fields addObject:@{@"name":name,@"type":type,@"ref":@(diagnosticID(child))}];
+        }
+    }
+    NSMutableArray* elements=[NSMutableArray array];
+    if(class_get_rank(klass)==1){
+        size_t count=std::min<size_t>(length(obj),256);
+        for(size_t i=0;i<count;i++){
+            int32_t index=(int32_t)i;void* args[]={&index};
+            void* item=objectCall(obj,"GetValue",{"System.Int32"},args);
+            if(item)[elements addObject:@{@"index":@(i),@"ref":@(diagnosticID(item)),@"class":className(object_get_class(item))}];
+        }
+    }
+    NSMutableDictionary* result=[@{@"id":@(id),@"class":className(klass),@"fields":fields,@"elements":elements} mutableCopy];
+    // Primitive values here are structural collection metadata / cosmetic IDs.
+    NSString* cn=className(klass);
+    if([cn isEqualToString:@"System.Int32"]){int32_t n=0;value(obj,n);result[@"value"]=@(n);}
+    if([cn isEqualToString:@"System.Boolean"]){bool n=false;value(obj,n);result[@"value"]=@(n);}
+    if([cn isEqualToString:@"System.UInt16"]){uint16_t n=0;value(obj,n);result[@"value"]=@(n);}
+    return json(result);
 }
 }

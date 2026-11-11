@@ -15,6 +15,8 @@ public:
     void setTint(bool enabled);
     void setVisualsAllowed(bool allowed);
     void restore();
+    std::string diagnosticRoots();
+    std::string diagnosticNode(int id);
     std::string status="Waiting for Unity";
 private:
     void* library=nullptr;
@@ -29,6 +31,8 @@ private:
     double lastTint=0;
     struct Saved { uint32_t renderer,materials; std::vector<uint32_t> clones; };
     std::vector<Saved> saved;
+    std::vector<uint32_t> diagnosticHandles;
+    int diagnosticID(void* object);
     void* find(const char* ns,const char* name);
     const void* method(void* klass,const char* name,const std::vector<std::string>& parameters);
     void* call(void* klass,const char* name,void* instance,const std::vector<std::string>& types={},void** args=nullptr);

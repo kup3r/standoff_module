@@ -33,6 +33,8 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
       - name: Build arm64 framework
         run: bash build-macos.sh
+      - name: Build read-only device diagnostic variant
+        run: GLOW_DEV_BRIDGE=1 BUILD_DIR=build/dev bash build-macos.sh
       - name: Check menu in iOS Simulator (legacy lifecycle)
         run: bash tests/ui-smoke.sh
       - name: Validate Mach-O and framework
@@ -43,9 +45,12 @@ jobs:
           xcrun otool -L build/GlowESP.framework/GlowESP
           codesign --force --sign - build/GlowESP.framework
           codesign --verify --strict --verbose=2 build/GlowESP.framework
+          codesign --force --sign - build/dev/GlowESP.framework
+          codesign --verify --strict --verbose=2 build/dev/GlowESP.framework
       - name: Package artifact
         run: |
           ditto -c -k --keepParent build/GlowESP.framework build/GlowESP.framework.zip
+          ditto -c -k --keepParent build/dev/GlowESP.framework build/GlowESP.dev.framework.zip
           shasum -a 256 build/GlowESP.framework.zip > build/SHA256SUMS.txt
           printf '%s\n' 'Ad hoc signed framework. Re-sign with the containing app before installation.' > build/ARTIFACT-NOTES.txt
       - uses: actions/upload-artifact@v7.0.2
@@ -53,6 +58,7 @@ jobs:
           name: GlowESP-arm64-${{ github.sha }}
           path: |
             build/GlowESP.framework.zip
+            build/GlowESP.dev.framework.zip
             build/SHA256SUMS.txt
             build/ARTIFACT-NOTES.txt
             build/ui-smoke.txt

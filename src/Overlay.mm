@@ -1,10 +1,41 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #include "Runtime.hpp"
+#ifndef GLOW_DEV_BRIDGE
+#define GLOW_DEV_BRIDGE 0
+#endif
 
 static glow::Runtime runtime;
 static UIColor* mint(){return [UIColor colorWithRed:.30 green:.98 blue:.80 alpha:1];}
 static UIColor* violet(){return [UIColor colorWithRed:.65 green:.47 blue:1 alpha:1];}
+
+#if GLOW_DEV_BRIDGE
+// Read-only, filesystem-only development bridge. Not included in the normal artifact.
+static NSString* bridgeDirectory(){
+    NSString* documents=NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,NSUserDomainMask,YES).firstObject;
+    return [documents stringByAppendingPathComponent:@"GlowESPDev"];
+}
+static void bridgeReady(){
+    NSString* directory=bridgeDirectory();
+    [NSFileManager.defaultManager createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil];
+    NSDictionary* info=@{@"pid":@(NSProcessInfo.processInfo.processIdentifier),@"bundle":NSBundle.mainBundle.bundleIdentifier?:@"",@"version":@"0.3-dev"};
+    [[NSJSONSerialization dataWithJSONObject:info options:0 error:nil] writeToFile:[directory stringByAppendingPathComponent:@"ready.json"] atomically:YES];
+}
+static void bridgePoll(){
+    static CFTimeInterval previous=0;CFTimeInterval current=CACurrentMediaTime();if(current-previous<.25)return;previous=current;
+    NSString* directory=bridgeDirectory();NSString* path=[directory stringByAppendingPathComponent:@"request.json"];
+    NSData* data=[NSData dataWithContentsOfFile:path];if(!data||data.length>16384)return;
+    NSDictionary* request=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];if(![request isKindOfClass:NSDictionary.class])return;
+    std::string report;
+    if([request[@"action"] isEqual:@"roots"])report=runtime.diagnosticRoots();
+    else if([request[@"action"] isEqual:@"node"])report=runtime.diagnosticNode([request[@"id"] intValue]);
+    else report="{\"error\":\"Unsupported read-only request\"}";
+    id result=[NSJSONSerialization JSONObjectWithData:[NSData dataWithBytes:report.data() length:report.size()] options:0 error:nil]?:@{};
+    NSDictionary* response=@{@"sequence":request[@"sequence"]?:@0,@"result":result};
+    [[NSJSONSerialization dataWithJSONObject:response options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[directory stringByAppendingPathComponent:@"response.json"] atomically:YES];
+    [NSFileManager.defaultManager removeItemAtPath:path error:nil];
+}
+#endif
 
 @interface GlowCanvas : UIView
 @property(nonatomic) BOOL enabled;
@@ -104,6 +135,9 @@ static UIColor* violet(){return [UIColor colorWithRed:.65 green:.47 blue:1 alpha
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(inactive) name:UIApplicationWillResignActiveNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(updateCaptureState) name:UIScreenCapturedDidChangeNotification object:nil];
     [self updateCaptureState];
+#if GLOW_DEV_BRIDGE
+    bridgeReady();
+#endif
 }
 - (UILabel*)label:(NSString*)text size:(CGFloat)size color:(UIColor*)color {UILabel* l=[[UILabel alloc] init];l.text=text;l.font=[UIFont systemFontOfSize:size weight:UIFontWeightMedium];l.textColor=color;return l;}
 - (void)row:(NSString*)name tag:(NSInteger)tag enabled:(BOOL)enabled stack:(UIStackView*)stack {
@@ -145,6 +179,9 @@ static UIColor* violet(){return [UIColor colorWithRed:.65 green:.47 blue:1 alpha
     switch(s.tag){case 1:self.canvas.enabled=s.on;if(!s.on)runtime.restore();break;case 2:self.canvas.corners=s.on;break;case 3:self.canvas.halo=s.on;break;case 4:self.canvas.distanceLabels=s.on;break;case 5:runtime.setTint(s.on);break;}
 }
 - (void)tick:(CADisplayLink*)link {
+#if GLOW_DEV_BRIDGE
+    bridgePoll();
+#endif
     [self updateCaptureState];
     if(link.timestamp-gestureScan>1){gestureScan=link.timestamp;[self attachGestures];}
     if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)return;
