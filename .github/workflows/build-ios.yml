@@ -1,0 +1,49 @@
+name: Build iOS framework
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show Apple toolchain
+        run: |
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+      - name: Build arm64 framework
+        run: bash build-macos.sh
+      - name: Validate Mach-O and framework
+        run: |
+          plutil -lint build/GlowESP.framework/Info.plist
+          xcrun lipo -verify_arch arm64 build/GlowESP.framework/GlowESP
+          xcrun otool -hv build/GlowESP.framework/GlowESP
+          xcrun otool -L build/GlowESP.framework/GlowESP
+          codesign --force --sign - build/GlowESP.framework
+          codesign --verify --strict --verbose=2 build/GlowESP.framework
+      - name: Package artifact
+        run: |
+          ditto -c -k --keepParent build/GlowESP.framework build/GlowESP.framework.zip
+          shasum -a 256 build/GlowESP.framework.zip > build/SHA256SUMS.txt
+          printf '%s\n' 'Ad hoc signed framework. Re-sign with the containing app before installation.' > build/ARTIFACT-NOTES.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: GlowESP-arm64-${{ github.sha }}
+          path: |
+            build/GlowESP.framework.zip
+            build/SHA256SUMS.txt
+            build/ARTIFACT-NOTES.txt
+          if-no-files-found: error
+          retention-days: 14

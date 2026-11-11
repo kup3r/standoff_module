@@ -1,0 +1,9 @@
+build/
+*.ipa
+*.p12
+*.mobileprovision
+*.ips
+.DS_Store
+analysis/gameplay-types.txt
+analysis/symbols.json
+analysis/analyse.cjs
