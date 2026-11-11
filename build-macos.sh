@@ -6,7 +6,7 @@ mkdir -p build/GlowESP.framework
 xcrun --sdk iphoneos clang++ -std=c++17 -fobjc-arc -fvisibility=hidden \
   -arch arm64 -isysroot "$SDK" -miphoneos-version-min=15.0 \
   -dynamiclib src/Runtime.mm src/Overlay.mm \
-  -framework Foundation -framework UIKit -framework QuartzCore \
+  -framework Foundation -framework UIKit -framework QuartzCore -framework CoreGraphics \
   -install_name '@rpath/GlowESP.framework/GlowESP' \
   -o build/GlowESP.framework/GlowESP
 cp Info.plist build/GlowESP.framework/Info.plist

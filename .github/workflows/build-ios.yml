@@ -14,11 +14,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  package-tests:
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - name: Verify packaging and rejection paths
+        shell: pwsh
+        run: ./tests/package-smoke.ps1
   build:
     runs-on: macos-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7.0.1
       - name: Show Apple toolchain
         run: |
           xcodebuild -version
@@ -38,7 +46,7 @@ jobs:
           ditto -c -k --keepParent build/GlowESP.framework build/GlowESP.framework.zip
           shasum -a 256 build/GlowESP.framework.zip > build/SHA256SUMS.txt
           printf '%s\n' 'Ad hoc signed framework. Re-sign with the containing app before installation.' > build/ARTIFACT-NOTES.txt
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: GlowESP-arm64-${{ github.sha }}
           path: |
@@ -47,3 +55,4 @@ jobs:
             build/ARTIFACT-NOTES.txt
           if-no-files-found: error
           retention-days: 14
+
