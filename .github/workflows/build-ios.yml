@@ -36,7 +36,7 @@ jobs:
       - name: Validate Mach-O and framework
         run: |
           plutil -lint build/GlowESP.framework/Info.plist
-          xcrun lipo -verify_arch arm64 build/GlowESP.framework/GlowESP
+          xcrun lipo build/GlowESP.framework/GlowESP -verify_arch arm64
           xcrun otool -hv build/GlowESP.framework/GlowESP
           xcrun otool -L build/GlowESP.framework/GlowESP
           codesign --force --sign - build/GlowESP.framework

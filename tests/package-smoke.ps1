@@ -5,7 +5,11 @@ $scratch=Join-Path $root ('build/package-test-'+[Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($scratch) | Out-Null
 $framework=Join-Path $scratch 'GlowESP.framework'
 [IO.Directory]::CreateDirectory($framework) | Out-Null
-[IO.File]::WriteAllText((Join-Path $framework 'GlowESP'),'Test fixture, not executable code')
+$fixture=[byte[]]::new(32)
+[BitConverter]::GetBytes([uint32]4277009103).CopyTo($fixture,0)
+[BitConverter]::GetBytes([uint32]16777228).CopyTo($fixture,4)
+[BitConverter]::GetBytes([uint32]6).CopyTo($fixture,12)
+[IO.File]::WriteAllBytes((Join-Path $framework 'GlowESP'),$fixture)
 [IO.File]::WriteAllText((Join-Path $framework 'Info.plist'),'<plist version="1.0"><dict/></plist>')
 function New-TestIPA([string]$name,[bool]$encrypted,[bool]$nonzeroPadding){
     $b=[byte[]]::new(8192)

@@ -11,6 +11,8 @@ $output=[IO.Path]::GetFullPath($OutputIPA)
 if($source -eq $output){throw 'Output must differ from original IPA'}
 if(Test-Path -LiteralPath $output){throw 'Output already exists; choose a new filename'}
 if(!(Test-Path -LiteralPath (Join-Path $framework 'GlowESP')) -or !(Test-Path -LiteralPath (Join-Path $framework 'Info.plist'))){throw 'A compiled GlowESP.framework is required; source files alone cannot be packaged'}
+$frameworkBytes=[IO.File]::ReadAllBytes((Join-Path $framework 'GlowESP'))
+if($frameworkBytes.Length -lt 32 -or [BitConverter]::ToUInt32($frameworkBytes,0) -ne 4277009103 -or [BitConverter]::ToUInt32($frameworkBytes,4) -ne 16777228 -or [BitConverter]::ToUInt32($frameworkBytes,12) -ne 6){throw 'Framework executable must be a thin arm64 Mach-O dylib'}
 
 function Add-GlowLoadCommand([byte[]]$binary){
     if([BitConverter]::ToUInt32($binary,0) -ne 4277009103 -or [BitConverter]::ToUInt32($binary,4) -ne 16777228){throw 'Expected a thin arm64 Mach-O main executable'}
