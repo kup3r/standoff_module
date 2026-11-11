@@ -5,6 +5,8 @@
 #include <vector>
 
 namespace glow {
+using Handle = void*; // Unity 6000.3 Il2CppGCHandle ABI.
+static_assert(sizeof(Handle)==sizeof(void*), "GC handles must retain every pointer bit");
 struct Vec3 { float x,y,z; };
 struct Bounds { Vec3 center, extents; };
 struct Target { float x,y,w,h,distance; };
@@ -29,9 +31,9 @@ private:
     bool tint=false;
     bool visualsAllowed=false;
     double lastTint=0;
-    struct Saved { uint32_t renderer,materials; std::vector<uint32_t> clones; };
+    struct Saved { Handle renderer,materials; std::vector<Handle> clones; };
     std::vector<Saved> saved;
-    std::vector<uint32_t> diagnosticHandles;
+    std::vector<Handle> diagnosticHandles;
     int diagnosticID(void* object);
     void* find(const char* ns,const char* name);
     const void* method(void* klass,const char* name,const std::vector<std::string>& parameters);

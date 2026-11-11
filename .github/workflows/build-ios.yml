@@ -33,6 +33,10 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
       - name: Build arm64 framework
         run: bash build-macos.sh
+      - name: Guard Unity 6000 GC handle ABI
+        run: |
+          clang++ -std=c++17 tests/handle-abi.cpp -o build/handle-abi-test
+          build/handle-abi-test
       - name: Build read-only device diagnostic variant
         run: GLOW_DEV_BRIDGE=1 BUILD_DIR=build/dev bash build-macos.sh
       - name: Check menu in iOS Simulator (legacy lifecycle)

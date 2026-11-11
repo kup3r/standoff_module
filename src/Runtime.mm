@@ -30,9 +30,9 @@ static void* (*thread_current)();
 static void* (*thread_attach)(void*);
 static uintptr_t (*array_length)(void*);
 static uint32_t (*array_object_header_size)();
-static uint32_t (*gchandle_new)(void*,bool);
-static void* (*gchandle_get_target)(uint32_t);
-static void (*gchandle_free)(uint32_t);
+static Handle (*gchandle_new)(void*,bool);
+static void* (*gchandle_get_target)(Handle);
+static void (*gchandle_free)(Handle);
 static void* (*array_new)(void*,uintptr_t);
 static void (*gc_wbarrier_set_field)(void*,void**,void*);
 static void* (*object_new)(void*);
@@ -127,7 +127,7 @@ void Runtime::sample(float width,float height,std::vector<Target>& result){
     void* reflectionType=type_get_object(class_get_type(bindings));void* args[]={reflectionType};
     void* arr=call(unityObject,"FindObjectsOfType",nullptr,{"System.Type"},args);
     if(!arr){restore();return;}
-    uint32_t root=gchandle_new(arr,false);
+    Handle root=gchandle_new(arr,false);
     bool refreshTint=tint&&now()-lastTint>2;
     if(refreshTint){restore();lastTint=now();}
     Vec3 cameraPosition{};void* tr=objectCall(cam,"get_transform");
@@ -171,16 +171,16 @@ void Runtime::applyTint(void* binding){
     void* rt=type_get_object(class_get_type(rendererClass));void* args[]={rt};
     void* renderers=objectCall(binding,"GetComponentsInChildren",{"System.Type"},args);
     if(!renderers)return;
-    uint32_t root=gchandle_new(renderers,false);
+    Handle root=gchandle_new(renderers,false);
     for(size_t i=0;i<std::min<size_t>(length(renderers),32);i++){
         void* r=element(renderers,i);if(!alive(r))continue;
         void* originals=objectCall(r,"get_sharedMaterials");size_t n=length(originals);if(!n||n>32)continue;
         Saved s{gchandle_new(r,false),gchandle_new(originals,false),{}};
-        void* copies=array_new(materialClass,n);uint32_t copiesRoot=gchandle_new(copies,false);
+        void* copies=array_new(materialClass,n);Handle copiesRoot=gchandle_new(copies,false);
         bool ok=true;
         for(size_t j=0;j<n;j++){
             void* original=element(originals,j);if(!alive(original)){ok=false;break;}
-            void* copy=object_new(materialClass);uint32_t cr=gchandle_new(copy,false);s.clones.push_back(cr);
+            void* copy=object_new(materialClass);Handle cr=gchandle_new(copy,false);s.clones.push_back(cr);
             auto ctor=method(materialClass,".ctor",{"UnityEngine.Material"});void* a[]={original};void* ex=nullptr;
             if(!ctor){ok=false;break;}runtime_invoke(ctor,copy,a,&ex);if(ex){ok=false;break;}
             // Reversible visible material tint, not an unverified through-wall shader.
@@ -219,7 +219,7 @@ std::string Runtime::diagnosticRoots(){
         void* klass=find(name[0],name[1]);if(!klass)continue;
         void* rt=type_get_object(class_get_type(klass));void* args[]={rt};
         void* array=call(resources,"FindObjectsOfTypeAll",nullptr,{"System.Type"},args);if(!array)continue;
-        uint32_t root=gchandle_new(array,false);
+        Handle root=gchandle_new(array,false);
         for(size_t i=0;i<std::min<size_t>(length(array),2048);i++){
             void* obj=element(array,i);if(!alive(obj))continue;
             [nodes addObject:@{@"id":@(diagnosticID(obj)),@"class":className(object_get_class(obj))}];
